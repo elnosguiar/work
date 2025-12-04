@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Task Time Tracker & Analysis</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* --- 기본 스타일 --- */
+body {
+    font-family: 'Roboto', sans-serif;
+    background-color: #f4f7f6;
+    color: #333;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0;
+}
+
+/* --- 컨테이너 및 레이아웃 --- */
+.time-tracker-container {
+    max-width: 900px;
+    margin: 40px auto;
+    padding: 30px;
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+}
+
+h1 {
+    color: #007bff;
+    text-align: center;
+    margin-bottom: 30px;
+    border-bottom: 2px solid #007bff;
+    padding-bottom: 10px;
+}
+
+h2 {
+    color: #555;
+    margin-top: 30px;
+    margin-bottom: 15px;
+}
+
+/* --- 입력 및 버튼 그룹 --- */
+.input-group {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 25px;
+    align-items: center;
+}
+.input-group input {
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    font-size: 1rem;
+    box-sizing: border-box;
+}
+#task-name { flex: 3; }
+#time-spent { flex: 1; text-align: center;}
+
+.btn {
+    padding: 12px 20px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 700;
+    transition: background-color 0.3s;
+}
+
+.btn-primary {
+    background: #007bff;
+    color: white;
+}
+.btn-primary:hover {
+    background: #0056b3;
+}
+
+.btn-danger {
+    background: #dc3545;
+    color: white;
+    margin-top: 20px;
+    width: 100%;
+}
+.btn-danger:hover {
+    background: #c82333;
+}
+
+/* --- 차트 영역 --- */
+#chart-area {
+    background: #f9f9f9;
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid #eee;
+}
+
+/* --- 기록 목록 --- */
+#log-list {
+    list-style: none;
+    padding: 0;
+}
+#log-list li {
+    background: #eee;
+    padding: 10px;
+    margin-bottom: 8px;
+    border-radius: 5px;
+    display: flex;
+    justify-content: space-between;
+}
+</style>
+</head>
+<body>
+
+<div class="time-tracker-container">
+    <h1>⏰ Task Time Tracker & Analysis</h1>
+
+    <h2>기록 추가</h2>
+    <div class="input-group">
+        <input type="text" id="task-name" placeholder="작업 이름 (예: 코딩, 미팅 준비)">
+        <input type="number" id="time-spent" placeholder="소요 시간 (분)" min="1">
+        <button class="btn btn-primary" onclick="logTime()">기록하기</button>
+    </div>
+    
+    <hr>
+    
+    <h2>📊 주간 시간 사용 분석 (분 단위)</h2>
+    <div id="chart-area">
+        <canvas id="timeChart"></canvas>
+    </div>
+
+    <hr>
+
+    <h2>📝 전체 기록 목록</h2>
+    <ul id="log-list">
+        </ul>
+    
+    <button class="btn btn-danger" onclick="clearAllData()">모든 기록 지우기 (초기화)</button>
+</div>
+
+<script>
+const DATA_KEY = 'weeklyTimeTrackerData';
+let timeChart;
+
+// --- 데이터 처리 함수 ---
+
+/**
+ * 로컬 저장소에서 데이터를 불러옵니다.
+ * @returns {Object} {날짜: {작업이름: 시간}} 형태의 데이터
+ */
+function loadData() {
+    const data = localStorage.getItem(DATA_KEY);
+    return data ? JSON.parse(data) : {};
+}
+
+/**
+ * 데이터를 로컬 저장소에 저장합니다.
+ * @param {Object} data 저장할 데이터 객체
+ */
+function saveData(data) {
+    localStorage.setItem(DATA_KEY, JSON.stringify(data));
+}
+
+/**
+ * 날짜를 YYYY-MM-DD 형식의 문자열로 반환합니다.
+ * @returns {string} 오늘 날짜 (YYYY-MM-DD)
+ */
+function getTodayKey() {
+    return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * 입력된 시간을 기록하고 저장합니다.
+ */
+function logTime() {
+    const taskNameEl = document.getElementById('task-name');
+    const timeSpentEl = document.getElementById('time-spent');
+    
+    const taskName = taskNameEl.value.trim();
+    const timeSpent = parseInt(timeSpentEl.value);
+
+    if (taskName === "" || isNaN(timeSpent) || timeSpent <= 0) {
+        alert("작업 이름과 유효한 소요 시간(분)을 입력해주세요.");
+        return;
+    }
+
+    const allData = loadData();
+    const todayKey = getTodayKey();
+
+    // 오늘 날짜 데이터 초기화
+    if (!allData[todayKey]) allData[todayKey] = {};
+    
+    // 작업 시간에 누적
+    if (!allData[todayKey][taskName]) allData[todayKey][taskName] = 0;
+    allData[todayKey][taskName] += timeSpent;
+
+    saveData(allData);
+    
+    // 입력창 초기화
+    taskNameEl.value = '';
+    timeSpentEl.value = '';
+    
+    // UI 업데이트
+    renderChart(allData);
+    renderLogList(allData);
+}
+
+/**
+ * 모든 데이터를 지웁니다.
+ */
+function clearAllData() {
+    if (confirm("경고: 모든 기록을 정말로 지우시겠습니까? 이 작업은 되돌릴 수 없습니다.")) {
+        localStorage.removeItem(DATA_KEY);
+        
+        // 차트 초기화
+        if (timeChart) timeChart.destroy();
+        document.getElementById('timeChart').getContext('2d').clearRect(0, 0, 800, 400);
+        
+        // 목록 초기화
+        document.getElementById('log-list').innerHTML = '';
+        
+        alert("모든 기록이 삭제되었습니다.");
+        
+        // 빈 데이터로 차트 재생성
+        renderChart({}); 
+    }
+}
+
+// --- UI 렌더링 함수 ---
+
+/**
+ * Chart.js를 사용하여 주간 데이터 시각화
+ * @param {Object} allData 전체 데이터
+ */
+function renderChart(allData) {
+    // 지난 7일의 날짜를 계산하여 레이블로 사용
+    const dateKeys = Object.keys(allData).sort().slice(-7);
+    const allTasks = new Set();
+    
+    // 지난 7일간의 모든 작업 이름 추출
+    dateKeys.forEach(date => {
+        Object.keys(allData[date]).forEach(task => allTasks.add(task));
+    });
+    const taskLabels = Array.from(allTasks);
+
+    // Chart.js 데이터셋 생성
+    const datasets = taskLabels.map((task, index) => {
+        const timeData = dateKeys.map(date => allData[date][task] || 0);
+        
+        // 색상 동적 생성 (단순화를 위해 HSL 사용)
+        const hue = (index * 137) % 360; // 137은 황금비를 이용한 간격
+        const color = `hsl(${hue}, 70%, 50%)`;
+        
+        return {
+            label: task,
+            data: timeData,
+            backgroundColor: color,
+            borderColor: color,
+            borderWidth: 1,
+            fill: false,
+            type: 'bar', // 모든 작업은 막대 그래프
+            stack: 'stack1' // 스택형 막대 그래프로 구성
+        };
+    });
+
+    // 기존 차트 파괴 후 재생성 (업데이트)
+    if (timeChart) {
+        timeChart.destroy();
+    }
+
+    const ctx = document.getElementById('timeChart').getContext('2d');
+    timeChart = new Chart(ctx, {
+        type: 'bar', // 기본 타입
+        data: {
+            labels: dateKeys, // 날짜 레이블
+            datasets: datasets
+        },
+        options: {
+            responsive: true,
+            scales: {
+                x: {
+                    stacked: true,
+                    title: { display: true, text: '날짜' }
+                },
+                y: {
+                    stacked: true,
+                    beginAtZero: true,
+                    title: { display: true, text: '총 소요 시간 (분)' }
+                }
+            },
+            plugins: {
+                title: { display: true, text: '최근 7일간 업무 시간 분석' },
+                tooltip: { mode: 'index', intersect: false }
+            }
+        }
+    });
+}
+
+/**
+ * 전체 기록 목록을 HTML 리스트로 출력합니다.
+ * @param {Object} allData 전체 데이터
+ */
+function renderLogList(allData) {
+    const listEl = document.getElementById('log-list');
+    listEl.innerHTML = '';
+    
+    // 날짜별로 정렬하여 최신 순으로 표시
+    const sortedDates = Object.keys(allData).sort().reverse();
+
+    sortedDates.forEach(date => {
+        const tasks = allData[date];
+        
+        // 날짜 헤더 생성
+        const headerLi = document.createElement('li');
+        headerLi.innerHTML = `<strong>📅 ${date}</strong>`;
+        headerLi.style.backgroundColor = '#d1e7ff';
+        headerLi.style.fontWeight = 'bold';
+        listEl.appendChild(headerLi);
+
+        // 작업 목록 생성
+        Object.keys(tasks).forEach(taskName => {
+            const li = document.createElement('li');
+            li.innerHTML = `
+                <span>${taskName}</span>
+                <span>${tasks[taskName]}분</span>
+            `;
+            listEl.appendChild(li);
+        });
+    });
+
+    if (sortedDates.length === 0) {
+        listEl.innerHTML = '<li>아직 기록된 데이터가 없습니다.</li>';
+    }
+}
+
+// --- 초기 실행 ---
+document.addEventListener('DOMContentLoaded', () => {
+    const initialData = loadData();
+    renderChart(initialData);
+    renderLogList(initialData);
+});
+</script>
+
+</body>
+</html>
